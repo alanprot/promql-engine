@@ -165,17 +165,33 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 		hints.Func = e.Op.String()
 		hints.Grouping = e.Grouping
 		hints.By = !e.Without
+		var paramOp model.VectorOperator
 
 		next, err := newOperator(e.Expr, storage, opts, hints)
 		if err != nil {
 			return nil, err
 		}
-		a, err := aggregate.NewHashAggregate(model.NewVectorPool(stepsBatch), next, e.Op, e.Param, !e.Without, e.Grouping, stepsBatch)
-		if err != nil {
-			return nil, err
+
+		if e.Param != nil {
+			paramOp, err = newOperator(e.Param, storage, opts, hints)
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		return exchange.NewConcurrent(a, 2), nil
+		if e.Op == parser.TOPK || e.Op == parser.BOTTOMK {
+			next, err = aggregate.NewKHashAggregate(model.NewVectorPool(stepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			next, err = aggregate.NewHashAggregate(model.NewVectorPool(stepsBatch), next, e.Op, e.Param, !e.Without, e.Grouping, stepsBatch)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return exchange.NewConcurrent(next, 2), nil
 
 	case *parser.BinaryExpr:
 		if e.LHS.Type() == parser.ValueTypeScalar || e.RHS.Type() == parser.ValueTypeScalar {
