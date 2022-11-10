@@ -29,6 +29,13 @@ import (
 	"github.com/thanos-community/promql-engine/logicalplan"
 )
 
+type QueryType int
+
+const (
+	InstantQuery QueryType = 1
+	RangeQuery   QueryType = 2
+)
+
 type Opts struct {
 	promql.EngineOpts
 
@@ -116,6 +123,8 @@ func (e *compatibilityEngine) NewInstantQuery(q storage.Queryable, opts *promql.
 		engine: e,
 		expr:   expr,
 		ts:     ts,
+		qType:  InstantQuery,
+		steps:  1,
 	}, nil
 }
 
@@ -136,6 +145,7 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 	}
 
 	exec, err := execution.New(lplan.Expr(), q, start, end, step, e.lookbackDelta)
+	steps := (end.UnixMilli() - start.UnixMilli()) / step.Milliseconds()
 	if e.triggerFallback(err) {
 		e.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(q, opts, qs, start, end, step)
@@ -153,6 +163,8 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 		Query:  &Query{exec: exec},
 		engine: e,
 		expr:   expr,
+		qType:  RangeQuery,
+		steps:  steps,
 	}, nil
 }
 
@@ -174,7 +186,9 @@ type compatibilityQuery struct {
 	*Query
 	engine *compatibilityEngine
 	expr   parser.Expr
-	ts     time.Time // Empty for instant queries.
+	ts     time.Time // Empty for range queries.
+	qType  QueryType
+	steps  int64
 
 	cancel context.CancelFunc
 }
@@ -199,7 +213,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	series := make([]promql.Series, len(resultSeries))
 	for i := 0; i < len(resultSeries); i++ {
 		series[i].Metric = resultSeries[i]
-		series[i].Points = make([]promql.Point, 0, 121) // Typically 1h of data.
+		series[i].Points = make([]promql.Point, 0, q.steps)
 	}
 
 loop:
@@ -253,7 +267,7 @@ loop:
 	}
 
 	// For range Query we expect always a Matrix value type.
-	if q.ts.Equal(time.Time{}) {
+	if q.qType == RangeQuery {
 		resultMatrix := make(promql.Matrix, 0, len(series))
 		for _, s := range series {
 			if len(s.Points) == 0 {
