@@ -213,7 +213,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	series := make([]promql.Series, len(resultSeries))
 	for i := 0; i < len(resultSeries); i++ {
 		series[i].Metric = resultSeries[i]
-		series[i].Points = make([]promql.Point, 0, 121) // Typically 1h of data.
+		series[i].Points = make([]promql.Point, 0, q.steps) // Typically 1h of data.
 	}
 
 loop:
