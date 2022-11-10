@@ -104,7 +104,7 @@ func BenchmarkRangeQuery(b *testing.B) {
 
 	start := time.Unix(0, 0)
 	end := start.Add(2 * time.Hour)
-	step := time.Second * 30
+	step := time.Second * 3
 
 	cases := []struct {
 		name  string
