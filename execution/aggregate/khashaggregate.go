@@ -178,10 +178,12 @@ func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, Sampl
 			}
 
 			if h.Len() == k {
-				heap.Pop(h)
+				h.entries[0].sId = sId
+				h.entries[0].total = samples[i]
+				heap.Fix(h, 0)
+			} else {
+				heap.Push(h, &entry{sId: sId, total: samples[i]})
 			}
-
-			heap.Push(h, &entry{sId: sId, total: samples[i]})
 		}
 	}
 
